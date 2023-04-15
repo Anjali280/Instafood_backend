@@ -5,6 +5,7 @@ const { body, validationResult } = require("express-validator");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const config = require("../configurations/config");
+const Auth = require("../middleware/Auth");
 
 /*
 *
@@ -32,6 +33,7 @@ router.post(
       await User.create({
         name: req.body.name,
         password: securePassword,
+        avatar: req.body.avatar,
         email: req.body.email,
         location: req.body.location,
       })
@@ -82,13 +84,14 @@ router.post(
       }
 
       /*Generation of JWT Token*/
-      const data = {
-        user: {
-          id: user.id,
-        },
-      };
+      // const data = {
+      //   user: {
+      //     id: user.id,
+      //   },
+      // };
+      const { _id } = user;
       success = true;
-      const authToken = jwt.sign(data, config.JWT_SECRET_KEY);
+      const authToken = jwt.sign({ _id }, config.JWT_SECRET_KEY);
       return res.json({ success: true, authToken });
     } catch (error) {
       console.error(error.message);
@@ -99,7 +102,60 @@ router.post(
 
 /*
 *
-For 
+For getting account details
 *
 */
+router.get("/getDetails", Auth, async (req, res) => {
+  try {
+    const { _id } = req.user;
+    const { name, location, email, avatar } = await User.findById(_id);
+
+    res.send({
+      type: "success",
+      message: "fetch logged in user info success",
+      payload: { name, location, email, avatar },
+    });
+  } catch (err) {
+    res.status(500).send({
+      error: "Something went wrong",
+    });
+  }
+});
+
+/*
+*
+For Change Password
+*
+*/
+router.patch("/changePassword", Auth, async (req, res) => {
+  try {
+    const { oldPassword, newPassword } = req.body;
+    const { _id } = req.user;
+    const user = await User.findById(_id);
+
+    if (!bcrypt.compareSync(oldPassword, user.password)) {
+      return res.status(400).send({
+        type: "faliure",
+        message: "wrong old password",
+      });
+    }
+
+    const inputPassword = newPassword;
+    const hashedPassword = bcrypt.hashSync(inputPassword);
+
+    await User.findByIdAndUpdate(_id, { $set: { password: hashedPassword } });
+
+    res.status(201).send({
+      type: "success",
+      message: "Password changed successfully",
+    });
+  } catch (err) {
+    console.error(err);
+
+    res.status(500).send({
+      error: "Something went wrong",
+    });
+  }
+});
+
 module.exports = router;
